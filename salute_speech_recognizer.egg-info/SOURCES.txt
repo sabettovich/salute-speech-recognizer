@@ -1,0 +1,17 @@
+LICENSE
+README.md
+pyproject.toml
+salute_speech_recognizer/__init__.py
+salute_speech_recognizer/cli.py
+salute_speech_recognizer/grpc_async.py
+salute_speech_recognizer/http_async.py
+salute_speech_recognizer/mapping.py
+salute_speech_recognizer/normalize.py
+salute_speech_recognizer/recognize.py
+salute_speech_recognizer.egg-info/PKG-INFO
+salute_speech_recognizer.egg-info/SOURCES.txt
+salute_speech_recognizer.egg-info/dependency_links.txt
+salute_speech_recognizer.egg-info/entry_points.txt
+salute_speech_recognizer.egg-info/requires.txt
+salute_speech_recognizer.egg-info/top_level.txt
+tests/test_normalize.py
