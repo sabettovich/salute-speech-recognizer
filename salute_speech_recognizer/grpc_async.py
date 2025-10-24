@@ -506,7 +506,16 @@ def grpc_async_transcribe(input_path: str, output_md_path: str, language: str = 
     return None
 
 
-def grpc_recognize_to_objects(input_path: str, language: str = "ru-RU", diarization: bool = True) -> tuple[dict, dict, str]:
+def grpc_recognize_to_objects(
+    input_path: str,
+    language: str = "ru-RU",
+    diarization: bool = True,
+    *,
+    hints_path: t.Optional[str] = None,
+    speakers_map_path: t.Optional[str] = None,
+    hints: t.Optional[list[str]] = None,
+    speakers_map: t.Optional[dict[str, str]] = None,
+) -> tuple[dict, dict, str]:
     """
     Выполнить распознавание и вернуть кортеж:
     (raw_json, norm_json, markdown) — без записи на диск.
@@ -584,12 +593,16 @@ def grpc_recognize_to_objects(input_path: str, language: str = "ru-RU", diarizat
             opts.eou_timeout = 0.6
         except Exception:
             pass
-    # Hints
-    hints_path = os.getenv("HINTS_PATH") or os.path.join(os.getcwd(), "Source", "hints.txt")
-    hints = _load_hints(hints_path)
-    if hints:
+    # Hints: precedence -> explicit list > explicit path > ENV > default file
+    eff_hints: list[str] = []
+    if hints is not None:
+        eff_hints = list(hints)
+    else:
+        hp = hints_path or os.getenv("HINTS_PATH") or os.path.join(os.getcwd(), "Source", "hints.txt")
+        eff_hints = _load_hints(hp)
+    if eff_hints:
         try:
-            opts.hints.words.extend(hints)
+            opts.hints.words.extend(eff_hints)
             opts.hints.enable_letters = True
         except Exception:
             pass
@@ -621,10 +634,13 @@ def grpc_recognize_to_objects(input_path: str, language: str = "ru-RU", diarizat
         data = {"raw": True, "bytes_len": len(raw_bytes)}
 
     # 5) Normalize/map and render
-    hints = _load_hints(hints_path)
-    norm = _normalize_grpc_result(data, hints=hints)
-    speakers_map_path = os.getenv("SPEAKERS_MAP_PATH") or os.path.join(os.getcwd(), "Source", "speakers_map.json")
-    phrase_map = _load_speaker_map(speakers_map_path)
+    norm = _normalize_grpc_result(data, hints=eff_hints)
+    # Speakers map: precedence -> explicit dict > explicit path > ENV > default file
+    if speakers_map is not None:
+        phrase_map = speakers_map
+    else:
+        smp = speakers_map_path or os.getenv("SPEAKERS_MAP_PATH") or os.path.join(os.getcwd(), "Source", "speakers_map.json")
+        phrase_map = _load_speaker_map(smp)
     norm = _apply_speaker_mapping(norm, phrase_map)
     md = _build_markdown_from_json(norm)
     return data, norm, md
