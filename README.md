@@ -84,6 +84,40 @@ from salute_speech_recognizer import grpc_recognize_to_objects
 raw, norm, md = grpc_recognize_to_objects("Source/audio.mp3", language="ru-RU", diarization=True)
 ```
 
+### Передача версионированных hints/speakers_map
+
+Можно явно прокинуть пути к версиям файлов или сами объекты.
+
+- Через пути:
+```python
+raw, norm, md = grpc_recognize_to_objects(
+    "Source/audio.mp3",
+    hints_path="Source/hints.v5.txt",
+    speakers_map_path="Source/speakers_map.v7.json",
+)
+```
+
+- Через объекты (если вы сами читаете их из хранилища):
+```python
+with open("Source/hints.v5.txt", "r", encoding="utf-8") as f:
+    hints = [line.strip() for line in f if line.strip()]
+
+import json
+with open("Source/speakers_map.v7.json", "r", encoding="utf-8") as f:
+    speakers_map = json.load(f)
+
+raw, norm, md = grpc_recognize_to_objects(
+    "Source/audio.mp3",
+    hints=hints,
+    speakers_map=speakers_map,
+)
+```
+
+Прецеденты (приоритеты) выбора конфигураций:
+
+- **hints**: аргумент `hints (list)` > `hints_path` > `HINTS_PATH` > `Source/hints.txt`.
+- **speakers_map**: аргумент `speakers_map (dict)` > `speakers_map_path` > `SPEAKERS_MAP_PATH` > `Source/speakers_map.json`.
+
 ## Настройка качества
 
 - Hints (`Source/hints.txt`): по одному слову/фразе на строку. Помогают модели распознавать термины/имена.
