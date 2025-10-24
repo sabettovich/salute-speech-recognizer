@@ -41,6 +41,26 @@ def _resolve_ca() -> t.Optional[bytes]:
     return None
 
 
+def _make_channel() -> grpc.Channel:
+    # Build authenticated secure channel using SDK token
+    from dotenv import load_dotenv
+    load_dotenv()
+    auth_key = os.getenv("SBER_SPEECH_AUTH_KEY") or os.getenv("SBER_SPEECH_API_KEY")
+    if not auth_key:
+        raise RuntimeError("Не найден SBER_SPEECH_AUTH_KEY (или SBER_SPEECH_API_KEY)")
+
+    client = SaluteSpeechClient(client_credentials=auth_key)
+    token = client.token_manager.get_valid_token()
+
+    ca_bytes = _resolve_ca()
+    ssl_cred = grpc.ssl_channel_credentials(root_certificates=ca_bytes)
+    token_cred = grpc.access_token_call_credentials(token)
+    return grpc.secure_channel(
+        "smartspeech.sber.ru:443",
+        grpc.composite_channel_credentials(ssl_cred, token_cred),
+    )
+
+
 def _sec_to_ts(sec: float) -> str:
     m = int(sec // 60)
     s = sec - m * 60
@@ -524,18 +544,17 @@ def grpc_recognize_to_objects(
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Аудиофайл не найден: {input_path}")
 
-    # 1) Prepare stubs and upload
+    # 1) Prepare stubs and upload (SmartSpeech stubs, same as grpc_async_transcribe)
     channel = _make_channel()
-    storage_stub = storage_service_pb2_grpc.StorageStub(channel)
-    recognition_stub = recognition_service_pb2_grpc.SpeechToTextStub(channel)
+    recognition_stub = recognition_pb2_grpc.SmartSpeechStub(channel)
+    storage_stub = storage_pb2_grpc.SmartSpeechStub(channel)
+    task_stub = task_pb2_grpc.SmartSpeechStub(channel)
 
+    CHUNK_SIZE = 8192
     def _gen_chunks():
         with open(input_path, "rb") as f:
-            while True:
-                b = f.read(1024 * 1024)
-                if not b:
-                    break
-                yield storage_pb2.UploadRequest(chunk=b)
+            for data in iter(lambda: f.read(CHUNK_SIZE), b""):
+                yield storage_pb2.UploadRequest(file_chunk=data)
 
     upload_resp = storage_stub.Upload(_gen_chunks())
     request_file_id = getattr(upload_resp, "request_file_id", None) or getattr(upload_resp, "requestFileId", None)
@@ -610,24 +629,30 @@ def grpc_recognize_to_objects(
     areq = recognition_pb2.AsyncRecognizeRequest(options=opts, request_file_id=request_file_id)
     task = recognition_stub.AsyncRecognize(areq)
 
-    # 3) Poll
-    task_id = task.task_id
+    # 3) Poll via Task service
+    task_id = getattr(task, "id", None)
     if not task_id:
-        raise RuntimeError(f"Не получен task_id из AsyncRecognize ответа: {task}")
-    status_req = recognition_pb2.RecognitionTaskStatusRequest(task_id=task_id)
-    import time
-    for _ in range(600):
-        st = recognition_stub.GetRecognitionTaskStatus(status_req)
-        if st.status in (recognition_pb2.TaskStatus.DONE, recognition_pb2.TaskStatus.ERROR):
+        raise RuntimeError(f"Не получен task id: {task}")
+    while True:
+        time.sleep(2.0)
+        t = task_stub.GetTask(task_pb2.GetTaskRequest(task_id=task_id))
+        if t.status == task_pb2.Task.NEW:
+            continue
+        elif t.status == task_pb2.Task.RUNNING:
+            continue
+        elif t.status == task_pb2.Task.CANCELED:
+            raise RuntimeError("Task canceled")
+        elif t.status == task_pb2.Task.ERROR:
+            raise RuntimeError(f"Task failed: {t.error}")
+        elif t.status == task_pb2.Task.DONE:
+            response_file_id = getattr(t, "response_file_id", None)
+            if not response_file_id:
+                raise RuntimeError("Нет response_file_id у выполненной задачи")
             break
-        time.sleep(0.5)
-    if st.status != recognition_pb2.TaskStatus.DONE:
-        raise RuntimeError(f"Распознавание завершилось со статусом {st.status}")
 
     # 4) Download
-    get_req = recognition_pb2.GetRecognitionResultRequest(task_id=task_id)
-    resp = recognition_stub.GetRecognitionResult(get_req)
-    raw_bytes = b"".join([ch.result for ch in resp])
+    chunks = storage_stub.Download(storage_pb2.DownloadRequest(response_file_id=response_file_id))
+    raw_bytes = b"".join(chunk.file_chunk for chunk in chunks)
     try:
         data = json.loads(raw_bytes.decode("utf-8"))
     except Exception:
