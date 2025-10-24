@@ -503,3 +503,128 @@ def grpc_async_transcribe(input_path: str, output_md_path: str, language: str = 
     md = _build_markdown_from_json(norm)
     with open(output_md_path, "w", encoding="utf-8") as f:
         f.write(md)
+    return None
+
+
+def grpc_recognize_to_objects(input_path: str, language: str = "ru-RU", diarization: bool = True) -> tuple[dict, dict, str]:
+    """
+    Выполнить распознавание и вернуть кортеж:
+    (raw_json, norm_json, markdown) — без записи на диск.
+    Учитывает HINTS_PATH/SPEAKERS_MAP_PATH из окружения.
+    """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Аудиофайл не найден: {input_path}")
+
+    # 1) Prepare stubs and upload
+    channel = _make_channel()
+    storage_stub = storage_service_pb2_grpc.StorageStub(channel)
+    recognition_stub = recognition_service_pb2_grpc.SpeechToTextStub(channel)
+
+    def _gen_chunks():
+        with open(input_path, "rb") as f:
+            while True:
+                b = f.read(1024 * 1024)
+                if not b:
+                    break
+                yield storage_pb2.UploadRequest(chunk=b)
+
+    upload_resp = storage_stub.Upload(_gen_chunks())
+    request_file_id = getattr(upload_resp, "request_file_id", None) or getattr(upload_resp, "requestFileId", None)
+    if not request_file_id:
+        raise RuntimeError(f"Не получен request_file_id из Upload ответа: {upload_resp}")
+
+    # 2) Options
+    opts = recognition_pb2.RecognitionOptions()
+    opts.language = language
+    opts.model = "general"
+    opts.hypotheses_count = 3
+    ext = os.path.splitext(input_path)[1].lower()
+    if ext == ".mp3":
+        opts.audio_encoding = recognition_pb2.RecognitionOptions.MP3
+        opts.channels_count = 2
+    elif ext in (".ogg", ".opus"):
+        opts.audio_encoding = recognition_pb2.RecognitionOptions.OPUS
+        opts.channels_count = 1
+    elif ext == ".flac":
+        opts.audio_encoding = recognition_pb2.RecognitionOptions.FLAC
+        opts.channels_count = 1
+    elif ext == ".wav":
+        opts.audio_encoding = recognition_pb2.RecognitionOptions.LINEAR16
+        try:
+            import wave
+            with wave.open(input_path, "rb") as wf:
+                opts.sample_rate = wf.getframerate()
+                opts.channels_count = wf.getnchannels()
+        except Exception:
+            opts.sample_rate = 16000
+            opts.channels_count = 1
+    else:
+        opts.audio_encoding = recognition_pb2.RecognitionOptions.MP3
+    if diarization:
+        opts.speaker_separation_options.enable = True
+    try:
+        opts.no_speech_timeout.seconds = 2
+    except Exception:
+        try:
+            opts.no_speech_timeout = 2.0
+        except Exception:
+            pass
+    try:
+        opts.max_speech_timeout.seconds = 20
+    except Exception:
+        try:
+            opts.max_speech_timeout = 20.0
+        except Exception:
+            pass
+    try:
+        opts.eou_timeout.seconds = 0
+        opts.eou_timeout.nanos = int(0.6 * 1e9)
+    except Exception:
+        try:
+            opts.eou_timeout = 0.6
+        except Exception:
+            pass
+    # Hints
+    hints_path = os.getenv("HINTS_PATH") or os.path.join(os.getcwd(), "Source", "hints.txt")
+    hints = _load_hints(hints_path)
+    if hints:
+        try:
+            opts.hints.words.extend(hints)
+            opts.hints.enable_letters = True
+        except Exception:
+            pass
+
+    areq = recognition_pb2.AsyncRecognizeRequest(options=opts, request_file_id=request_file_id)
+    task = recognition_stub.AsyncRecognize(areq)
+
+    # 3) Poll
+    task_id = task.task_id
+    if not task_id:
+        raise RuntimeError(f"Не получен task_id из AsyncRecognize ответа: {task}")
+    status_req = recognition_pb2.RecognitionTaskStatusRequest(task_id=task_id)
+    import time
+    for _ in range(600):
+        st = recognition_stub.GetRecognitionTaskStatus(status_req)
+        if st.status in (recognition_pb2.TaskStatus.DONE, recognition_pb2.TaskStatus.ERROR):
+            break
+        time.sleep(0.5)
+    if st.status != recognition_pb2.TaskStatus.DONE:
+        raise RuntimeError(f"Распознавание завершилось со статусом {st.status}")
+
+    # 4) Download
+    get_req = recognition_pb2.GetRecognitionResultRequest(task_id=task_id)
+    resp = recognition_stub.GetRecognitionResult(get_req)
+    raw_bytes = b"".join([ch.result for ch in resp])
+    try:
+        data = json.loads(raw_bytes.decode("utf-8"))
+    except Exception:
+        data = {"raw": True, "bytes_len": len(raw_bytes)}
+
+    # 5) Normalize/map and render
+    hints = _load_hints(hints_path)
+    norm = _normalize_grpc_result(data, hints=hints)
+    speakers_map_path = os.getenv("SPEAKERS_MAP_PATH") or os.path.join(os.getcwd(), "Source", "speakers_map.json")
+    phrase_map = _load_speaker_map(speakers_map_path)
+    norm = _apply_speaker_mapping(norm, phrase_map)
+    md = _build_markdown_from_json(norm)
+    return data, norm, md

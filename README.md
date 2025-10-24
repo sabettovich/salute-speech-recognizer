@@ -55,6 +55,35 @@ for f in Source/*.{mp3,wav,ogg,opus,flac}; do \
 done
 ```
 
+## Python API
+
+Можно использовать библиотеку напрямую, без CLI.
+
+- Класс высокого уровня `SaluteSpeechRecognizer` из `salute_speech_recognizer`:
+```python
+from salute_speech_recognizer import SaluteSpeechRecognizer
+
+rec = SaluteSpeechRecognizer(language="ru-RU", diarization=True)
+res = rec.recognize("Source/audio.mp3")
+
+print(res.markdown)
+print(res.norm["segments"][0])
+```
+
+- Запись результатов в файлы:
+```python
+rec = SaluteSpeechRecognizer()
+res = rec.recognize_to_file("Source/audio.mp3", "Result/audio.md")
+# Будут созданы также Result/audio.grpc.raw.json и Result/audio.grpc.norm.json
+```
+
+- Низкоуровневая функция `grpc_recognize_to_objects`:
+```python
+from salute_speech_recognizer import grpc_recognize_to_objects
+
+raw, norm, md = grpc_recognize_to_objects("Source/audio.mp3", language="ru-RU", diarization=True)
+```
+
 ## Настройка качества
 
 - Hints (`Source/hints.txt`): по одному слову/фразе на строку. Помогают модели распознавать термины/имена.
