@@ -43,3 +43,39 @@ done
 
 - `SBER_SPEECH_AUTH_KEY` — ключ доступа к Салют Спич (обязательно).
 - `SBER_CA_BUNDLE` — путь к кастомному CA (опционально).
+
+## Длинные файлы и авто‑нарезка (рекомендуемый дефолт)
+
+Для устойчивой обработки длинных записей используйте скрипт `ss_recognize.py` с режимом API=`sdk` и авто‑нарезкой.
+
+- Авто‑фолбэк (сначала целиком, при ошибке — порезка и склейка):
+```bash
+venv/bin/python ss_recognize.py \
+  --input <путь_к_аудио> \
+  --api sdk \
+  --auto-chunk \
+  --chunk-seconds 300
+```
+
+- Принудительная нарезка:
+```bash
+venv/bin/python ss_recognize.py \
+  --input <путь_к_аудио> \
+  --api sdk \
+  --force-chunked \
+  --chunk-seconds 300
+```
+
+- Стерео как два спикера в chunked‑режиме:
+```bash
+venv/bin/python ss_recognize.py \
+  --input <путь_к_аудио> \
+  --api sdk \
+  --force-chunked \
+  --chunk-stereo-as-speakers
+```
+
+Примечания:
+
+- Параметр `--chunk-seconds` задаёт длину части (по умолчанию 300 секунд).
+- Режимы `sdk/http` поддерживают нарезку; `grpc` — нет.

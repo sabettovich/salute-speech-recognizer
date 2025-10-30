@@ -16,11 +16,11 @@ export SBER_SPEECH_AUTH_KEY="<ваш ключ>"
 
 - Положите аудио в `Source/audio.mp3` (короткий тестовый файл уже используется в проекте).
 
-- Запустите распознавание (gRPC):
+- Запустите распознавание (дефолт: SDK с авто‑нарезкой для устойчивости на длинных файлах):
 ```bash
-venv/bin/python ss_recognize.py --input Source/audio.mp3 --api grpc
+venv/bin/python ss_recognize.py --input Source/audio.mp3 --api sdk --auto-chunk --chunk-seconds 300
 ```
-Результат:
+Результат (в каталоге Result/):
 - Markdown: `Result/audio.md`
 - Сырый JSON: `Result/audio.grpc.raw.json`
 - Нормализованный JSON: `Result/audio.grpc.norm.json`
@@ -46,7 +46,7 @@ for f in Source/*.mp3; do \
 done
 ```
 
-- Пакетная обработка со смешанными форматами:
+- Пакетная обработка со смешанными форматами (gRPC без нарезки):
 ```bash
 for f in Source/*.{mp3,wav,ogg,opus,flac}; do \
   [ -e "$f" ] || continue; \
@@ -54,6 +54,20 @@ for f in Source/*.{mp3,wav,ogg,opus,flac}; do \
   venv/bin/python ss_recognize.py --input "$f" --output "$out" --api grpc; \
 done
 ```
+
+### Длинные файлы (рекомендуется)
+
+- Авто‑режим (сначала целиком, при ошибке — нарезка/склейка):
+```bash
+venv/bin/python ss_recognize.py --input Source/long.flac --api sdk --auto-chunk --chunk-seconds 300
+```
+
+- Принудительная нарезка:
+```bash
+venv/bin/python ss_recognize.py --input Source/long.flac --api sdk --force-chunked --chunk-seconds 300
+```
+
+Примечание: режим `cli.py` (gRPC) не режет на части; для длинных записей используйте `ss_recognize.py` с API=`sdk`.
 
 ## Python API
 
