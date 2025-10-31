@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "salute-speech-recognizer"
-version = "1.0.1"
+version = "1.0.2"
 description = "CLI для транскрибации аудио через Салют Спич (gRPC) с hints, speaker mapping и Markdown-рендером"
 readme = "README.md"
 requires-python = ">=3.12"
