@@ -1,0 +1,26 @@
+id: mp3_17min_court_canonical_chunked
+match:
+  codec: [mp3]
+  sample_rate: [44100]
+  channels: [2]
+  duration_sec:
+    min: 600
+    max: 3600
+strategy:
+  prep_mode: canonical
+  audio:
+    encoding: PCM_S16LE
+    sample_rate: 16000
+    channels_count: 1
+  transport:
+    primary: grpc_async
+    fallback: http_async_per_chunk
+  chunk:
+    seconds: 120
+    max_retries_per_chunk: 1
+  diarization: service_only
+  hints:
+    enable: true
+scoring:
+  priority: 80
+  rationale: "gRPC нестабилен на длинных загрузках; канон + 120s + HTTP fallback устойчив"

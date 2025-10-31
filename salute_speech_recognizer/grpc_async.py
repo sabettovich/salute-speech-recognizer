@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from salute_speech.speech_recognition import SaluteSpeechClient
 import re
 import string
+from .dedup import apply_dedup, env_enabled
 
 # Path to generated protobufs in the old repo
 PROTO_DIR = "/home/sabet/myservs/myprjts/salute-speech_old/recognition/v1/python3"
@@ -520,6 +521,8 @@ def grpc_async_transcribe(input_path: str, output_md_path: str, language: str = 
     with open(norm_path, "w", encoding="utf-8") as jf:
         json.dump(norm, jf, ensure_ascii=False, indent=2)
 
+    if env_enabled():
+        norm = apply_dedup(norm)
     md = _build_markdown_from_json(norm)
     with open(output_md_path, "w", encoding="utf-8") as f:
         f.write(md)
@@ -577,7 +580,7 @@ def grpc_recognize_to_objects(
         opts.audio_encoding = recognition_pb2.RecognitionOptions.FLAC
         opts.channels_count = 1
     elif ext == ".wav":
-        opts.audio_encoding = recognition_pb2.RecognitionOptions.LINEAR16
+        opts.audio_encoding = recognition_pb2.RecognitionOptions.PCM_S16LE
         try:
             import wave
             with wave.open(input_path, "rb") as wf:
@@ -655,6 +658,8 @@ def grpc_recognize_to_objects(
     raw_bytes = b"".join(chunk.file_chunk for chunk in chunks)
     try:
         data = json.loads(raw_bytes.decode("utf-8"))
+        if isinstance(data, list):
+            data = {"segments": data}
     except Exception:
         data = {"raw": True, "bytes_len": len(raw_bytes)}
 
@@ -667,5 +672,7 @@ def grpc_recognize_to_objects(
         smp = speakers_map_path or os.getenv("SPEAKERS_MAP_PATH") or os.path.join(os.getcwd(), "Source", "speakers_map.json")
         phrase_map = _load_speaker_map(smp)
     norm = _apply_speaker_mapping(norm, phrase_map)
+    if env_enabled():
+        norm = apply_dedup(norm)
     md = _build_markdown_from_json(norm)
     return data, norm, md

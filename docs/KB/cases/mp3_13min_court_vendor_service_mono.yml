@@ -1,0 +1,46 @@
+id: mp3_13min_court_vendor_service_mono
+version: 1
+priority: 68
+scoring:
+  priority: 68
+match:
+  codec: [mp3]
+  sample_rate: [44100]
+  channels: [2]
+  duration_sec:
+    min: 300       # 5 минут
+    max: 1200      # 20 минут
+strategy:
+  prep_mode: vendor
+  audio:
+    encoding: MP3
+    sample_rate: 44100
+    channels_count: 2
+  transport:
+    primary: grpc_async
+    fallback: http_async
+    http_body_vendor: true   # просим сервис autodetect + hint channels=1
+  chunk:
+    seconds: 0               # без чанков
+  diarization: service_only
+  hints:
+    enable: true
+  dedup:
+    enable: true
+    overlap: 0.6
+    sim: 0.85
+  hypotheses:
+    count: 1
+explain:
+  rationale:
+    - mp3 stereo 44.1 kHz без перекодирования, моно просим на стороне сервиса
+    - fallback HTTP с vendor-friendly телами (autodetect, optional channels=1)
+    - включён дедуп сегментов (жёсткие пороги)
+  expected_outcome:
+    quality: readable_markdown
+    stability: high
+notes:
+  owner: selector
+  compare_with:
+    - mp3_13min_court_vendor_dedup
+    - mp3_17min_court_canonical_chunked

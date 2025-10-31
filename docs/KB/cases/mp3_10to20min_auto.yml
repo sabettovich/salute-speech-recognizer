@@ -1,0 +1,28 @@
+id: mp3_10to20min_auto
+version: 1
+priority: null
+match:
+  codec:
+  - mp3
+  sample_rate:
+  - 44100
+  channels:
+  - 2
+  duration:
+    min: 660.016327
+    max: 900.016327
+strategy:
+  prep_mode: vendor
+  transport:
+    primary: grpc_async
+    fallback: http_async
+  chunk:
+    seconds: 0
+explain:
+  rationale:
+  - auto-generated from successful run
+  expected_outcome:
+    quality: readable_markdown
+notes:
+  owner: auto
+  source: auto-log

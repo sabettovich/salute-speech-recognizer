@@ -1,0 +1,28 @@
+id: aac_10to20min_auto
+version: 1
+priority: null
+match:
+  codec:
+  - aac
+  sample_rate:
+  - 48000
+  channels:
+  - 2
+  duration:
+    min: 599.941602
+    max: 839.941602
+strategy:
+  prep_mode: vendor
+  transport:
+    primary: grpc_async
+    fallback: http_async
+  chunk:
+    seconds: 0
+explain:
+  rationale:
+  - auto-generated from successful run
+  expected_outcome:
+    quality: readable_markdown
+notes:
+  owner: auto
+  source: auto-log

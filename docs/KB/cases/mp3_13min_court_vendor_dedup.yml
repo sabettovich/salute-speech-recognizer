@@ -1,0 +1,48 @@
+id: mp3_13min_court_vendor_dedup
+version: 1
+priority: 66
+scoring:
+  priority: 66
+match:
+  codec: [mp3]
+  sample_rate: [44100]
+  channels: [2]
+  duration_sec:
+    min: 300       # 5 минут
+    max: 1200      # 20 минут
+strategy:
+  prep_mode: vendor
+  audio:
+    encoding: MP3
+    sample_rate: 44100
+    channels_count: 2
+  transport:
+    primary: grpc_async
+    fallback: http_async
+  chunk:
+    seconds: 0     # без чанков для 13 минут
+  diarization: service_only
+  hints:
+    enable: true
+  dedup:
+    enable: true
+    overlap: 0.6
+    sim: 0.85
+  hypotheses:
+    count: 1
+explain:
+  rationale:
+    - mp3 stereo 44.1 kHz стабильно идёт через vendor без перекодирования
+    - для ~13 минут gRPC обычно проходит; при сбое fallback на HTTP async
+    - включён дедуп сегментов для устранения дублей от стерео/nbest
+  expected_outcome:
+    quality: readable_markdown
+    stability: high
+    artifacts:
+      - md
+      - raw_json_optional
+notes:
+  added_from: successful_run_2024-12-18_vendor_dedup
+  compare_with:
+    - canonical_smart_chunked
+  owner: selector

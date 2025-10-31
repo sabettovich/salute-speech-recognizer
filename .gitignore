@@ -6,3 +6,12 @@ __pycache__/
 *.pyo
 *.DS_Store
 .env
+
+# Keep tmp directory, ignore contents
+tmp/*
+!tmp/.gitkeep
+
+# Ignore heavy intermediates
+Result/*.grpc.*.json
+Result/*chunked*.json
+Result/*.raw.json

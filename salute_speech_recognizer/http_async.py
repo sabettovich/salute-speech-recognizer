@@ -5,6 +5,7 @@ import typing as t
 import requests
 from salute_speech.speech_recognition import SaluteSpeechClient
 from dotenv import load_dotenv
+from .dedup import apply_dedup, env_enabled
 
 OAUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
 BASE = "https://smartspeech.sber.ru/rest/v1"
@@ -66,9 +67,15 @@ def get_access_token(auth_key: str, scope: str = "SALUTE_SPEECH_PERS", debug: di
 def upload_file(path: str, bearer: str, debug: dict | None = None) -> str:
     with open(path, "rb") as f:
         headers = {"Authorization": f"Bearer {bearer}", "Content-Type": "application/octet-stream"}
-        # Try NGW upload first
-        resp = requests.post(NGW_UPLOAD_URL, headers=headers, data=f, verify=_resolve_verify())
-        if resp.status_code != 200:
+        # Try NGW upload first, tolerate network/SSL errors
+        try:
+            resp = requests.post(NGW_UPLOAD_URL, headers=headers, data=f, verify=_resolve_verify())
+            ok_ngw = (resp.status_code == 200)
+        except Exception as e:
+            ok_ngw = False
+            if debug is not None:
+                _log(debug, {"action": "upload_ngw_exc", "url": NGW_UPLOAD_URL, "error": str(e)})
+        if not ok_ngw:
             # Fallback to SmartSpeech REST upload
             f.seek(0)
             resp = requests.post(UPLOAD_URL, headers={"Authorization": f"Bearer {bearer}"}, data=f, verify=_resolve_verify())
@@ -95,19 +102,72 @@ def upload_file(path: str, bearer: str, debug: dict | None = None) -> str:
 
 def create_task(request_file_id: str, bearer: str, language: str, diarization: bool, debug: dict | None = None) -> str:
     headers = {"Authorization": f"Bearer {bearer}", "Content-Type": "application/json"}
-    # SmartSpeech REST body (with options)
-    body_rest = {
+    # Prepare body variants
+    body_variants = []
+    # Variant A: snake options with canonical audio fields
+    A = {
         "request_file_id": request_file_id,
         "options": {
             "language": language,
             "model": "general",
+            "audio_encoding": "PCM_S16LE",
+            "sample_rate": 16000,
+            "channels_count": 1,
         }
     }
     if diarization:
-        body_rest["options"]["speaker_separation_options"] = {"enable": True}
-        body_rest["options"]["hypotheses_count"] = 1
+        A["options"]["speaker_separation_options"] = {"enable": True}
+        A["options"]["hypotheses_count"] = 1
+    body_variants.append(A)
+    # Variant B: camel options
+    B = {
+        "requestFileId": request_file_id,
+        "options": {
+            "language": language,
+            "model": "general",
+            "audioEncoding": "PCM_S16LE",
+            "sampleRate": 16000,
+            "channelsCount": 1,
+        }
+    }
+    if diarization:
+        B["options"]["speakerSeparationOptions"] = {"enable": True}
+        B["options"]["hypothesesCount"] = 1
+    body_variants.append(B)
+    # Variant C: nested audio_format snake
+    C = {
+        "request_file_id": request_file_id,
+        "options": {
+            "language": language,
+            "model": "general",
+            "audio_format": {
+                "encoding": "PCM_S16LE",
+                "sample_rate": 16000,
+                "channels": 1,
+            }
+        }
+    }
+    if diarization:
+        C["options"]["speaker_separation_options"] = {"enable": True}
+    body_variants.append(C)
+    # Variant D: nested audioFormat camel
+    D = {
+        "requestFileId": request_file_id,
+        "options": {
+            "language": language,
+            "model": "general",
+            "audioFormat": {
+                "encoding": "PCM_S16LE",
+                "sampleRate": 16000,
+                "channels": 1,
+            }
+        }
+    }
+    if diarization:
+        D["options"]["speakerSeparationOptions"] = {"enable": True}
+    body_variants.append(D)
 
-    # NGW v2 body (flat)
+    # NGW flat body
     body_ngw = {
         "file_id": request_file_id,
         "model": "general",
@@ -117,11 +177,37 @@ def create_task(request_file_id: str, bearer: str, language: str, diarization: b
         body_ngw["speaker_separation_options"] = {"enable": True}
 
     last_err: str | None = None
-    # Try NGW first with flat body
-    for url, body in [(f"{NGW_BASE}/recognition", body_ngw)] + [(u, body_rest) for u in CREATE_CANDIDATES]:
+    # Optionally add vendor-friendly bodies (service-side autodetect, optional channels=1 hint)
+    if os.getenv("SSR_HTTP_BODY_VENDOR") == "1":
+        V1 = {
+            "request_file_id": request_file_id,
+            "options": {
+                "language": language,
+                "model": "general",
+            }
+        }
+        if diarization:
+            V1["options"]["speaker_separation_options"] = {"enable": True}
+            V1["options"]["hypotheses_count"] = 1
+        body_variants.append(V1)
+        V2 = {
+            "requestFileId": request_file_id,
+            "options": {
+                "language": language,
+                "model": "general",
+                "channelsCount": 1,
+            }
+        }
+        if diarization:
+            V2["options"]["speakerSeparationOptions"] = {"enable": True}
+            V2["options"]["hypothesesCount"] = 1
+        body_variants.append(V2)
+
+    # Try NGW first, then REST with variants
+    for url, body in [(f"{NGW_BASE}/recognition", body_ngw)] + [(u, v) for u in CREATE_CANDIDATES for v in body_variants]:
         resp = requests.post(url, headers=headers, data=json.dumps(body), verify=_resolve_verify())
         if debug is not None:
-            _log(debug, {"action": "create", "url": url, "status": resp.status_code, "text": _safe_text(resp)})
+            _log(debug, {"action": "create", "url": url, "status": resp.status_code, "body": body, "text": _safe_text(resp)})
         if resp.status_code == 200:
             j = safe_json(resp)
             res = j.get("result", {}) if isinstance(j, dict) else {}
@@ -321,3 +407,110 @@ def safe_json(resp: requests.Response) -> dict:
         return resp.json()
     except Exception:
         return {"text": _safe_text(resp)}
+
+
+# --- Object-returning HTTP recognize with normalization (for chunk fallback) ---
+def _psec(v):
+    try:
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str) and v.endswith('s'):
+            return float(v[:-1])
+        if isinstance(v, str):
+            return float(v)
+    except Exception:
+        return None
+    return None
+
+
+def _normalize_http_result(data: dict) -> dict:
+    segs_in = (
+        data.get("segments")
+        or data.get("result", {}).get("segments")
+        or []
+    )
+    segments: list[dict] = []
+    if isinstance(segs_in, list):
+        for s in segs_in:
+            if not isinstance(s, dict):
+                continue
+            ress = s.get("results") or []
+            best = None
+            for r in ress:
+                if not isinstance(r, dict):
+                    continue
+                txt = (r.get("normalized_text") or r.get("text") or "").strip()
+                if txt:
+                    best = r
+                    break
+            if best is None and ress:
+                best = ress[0] if isinstance(ress[0], dict) else None
+            if not best:
+                continue
+            text = (best.get("normalized_text") or best.get("text") or "").strip()
+            if not text:
+                continue
+            start = _psec(best.get("start"))
+            end = _psec(best.get("end"))
+            if start is None:
+                start = _psec(s.get("processed_audio_start") or s.get("begin"))
+            if end is None:
+                end = _psec(s.get("processed_audio_end") or s.get("finish"))
+            sp = None
+            si = s.get("speaker_info") or {}
+            if isinstance(si, dict):
+                sp = si.get("speaker_id")
+            if sp is None:
+                sp = s.get("speaker_id") or s.get("speaker")
+            segments.append({
+                "start": start,
+                "end": end,
+                "text": text,
+                "speaker_id": sp,
+            })
+    return {"segments": segments}
+
+
+def http_recognize_to_objects(input_path: str, language: str = "ru-RU", diarization: bool = True) -> tuple[dict, dict, str]:
+    load_dotenv()
+    auth_key = os.getenv("SBER_SPEECH_AUTH_KEY") or os.getenv("SBER_SPEECH_API_KEY")
+    if not auth_key:
+        raise RuntimeError("Не найден SBER_SPEECH_AUTH_KEY (или SBER_SPEECH_API_KEY)")
+
+    debug: dict = {"input": input_path, "language": language, "diarization": diarization}
+    # Token via SDK, fallback to direct OAuth
+    try:
+        client = SaluteSpeechClient(client_credentials=auth_key)
+        token = client.token_manager.get_valid_token()
+        _log(debug, {"action": "oauth_sdk", "status": "OK"})
+    except Exception as e:
+        _log(debug, {"action": "oauth_sdk_fail", "error": str(e)})
+        token = get_access_token(auth_key, debug=debug)
+
+    req_id = upload_file(input_path, token, debug=debug)
+    task_id = create_task(req_id, token, language, diarization, debug=debug)
+
+    # Poll
+    for _ in range(60):
+        time.sleep(5)
+        st = get_task(task_id, token, debug=debug)
+        status = st.get("status") or st.get("task", {}).get("status")
+        su = str(status).upper()
+        if su in ("DONE", "ERROR", "CANCELED"):
+            if su != "DONE":
+                raise RuntimeError(f"HTTP задача завершилась со статусом {su}")
+            resp_id = st.get("response_file_id") or st.get("task", {}).get("response_file_id")
+            if not resp_id:
+                raise RuntimeError("Нет response_file_id")
+            raw_bytes = download_result(resp_id, token, debug=debug)
+            try:
+                raw = json.loads(raw_bytes.decode("utf-8"))
+            except Exception:
+                raw = {"raw": True, "bytes_len": len(raw_bytes)}
+            norm = _normalize_http_result(raw)
+            if env_enabled():
+                norm = apply_dedup(norm)
+            from .render import build_markdown_from_json
+            md = build_markdown_from_json(norm)
+            return raw, norm, md
+    raise RuntimeError("Таймаут ожидания HTTP задачи")
