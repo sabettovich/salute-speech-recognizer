@@ -12,6 +12,7 @@ tmp/*
 !tmp/.gitkeep
 
 # Ignore heavy intermediates
-Result/*.grpc.*.json
-Result/*chunked*.json
-Result/*.raw.json
+Result/*
+!Result/.gitkeep
+Source/*
+!Source/.gitkeep
