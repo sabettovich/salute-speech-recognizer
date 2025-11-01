@@ -4,6 +4,7 @@ import sys
 import argparse
 import json
 from typing import Optional
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 from .grpc_async import grpc_async_transcribe, grpc_recognize_to_objects
 from .http_async import http_recognize_to_objects
@@ -31,7 +32,13 @@ def _parse_timeouts(s: Optional[str]) -> tuple[Optional[float], Optional[float],
 
 
 def main() -> None:
+    # Resolve package version for --version flag
+    try:
+        _ver = _pkg_version("salute-speech-recognizer")
+    except PackageNotFoundError:
+        _ver = os.getenv("SSR_VERSION") or "0.0.0-dev"
     p = argparse.ArgumentParser(description="Salute Speech Recognizer CLI")
+    p.add_argument('--version', action='version', version=f"%(prog)s {_ver}")
     p.add_argument('--input', required=True, help='Путь к аудиофайлу')
     p.add_argument('--output', default='Result/audio.md', help='Путь к Markdown-выводу')
     p.add_argument('--api', default='grpc', choices=['grpc','http'], help='API backend')
