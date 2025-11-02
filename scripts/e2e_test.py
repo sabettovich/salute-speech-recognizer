@@ -42,6 +42,24 @@ CASES = [
         "norm": NORMS / "h2n_MS.norm.json",
         "norm2": NORMS / "h2n_XY.norm.json",
     },
+    {
+        "name": "aac_48000Hz_ch1_br63836_20s_smart",
+        "input": FIX / "aac_48000Hz_ch1_br63836_20s.m4a",
+        "output": RES / "test_aac_48000Hz_ch1_br63836_20s.md",
+        "gold": GOLD / "aac_48000Hz_ch1_br63836_20s.head.md",
+        "args": ["--smart"],
+        "mode": "cli",
+        "norm": NORMS / "aac_48000Hz_ch1_br63836_20s.norm.json",
+    },
+    {
+        "name": "pcm_s24le_48000Hz_ch2_br2304000_20s_smart",
+        "input": FIX / "pcm_s24le_48000Hz_ch2_br2304000_20s.wav",
+        "output": RES / "test_pcm_s24le_48000Hz_ch2_br2304000_20s.md",
+        "gold": GOLD / "pcm_s24le_48000Hz_ch2_br2304000_20s.head.md",
+        "args": ["--smart"],
+        "mode": "cli",
+        "norm": NORMS / "pcm_s24le_48000Hz_ch2_br2304000_20s.norm.json",
+    },
 ]
 
 
