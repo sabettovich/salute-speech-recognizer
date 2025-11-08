@@ -1,0 +1,38 @@
+id: zoom_h2n_dual_chunked_soft
+version: 1
+priority: 80
+scoring:
+  priority: 80
+match:
+  codec: [pcm_s16le, pcm_s24le]
+  sample_rate: [48000]
+  channels: [2]
+  duration_sec:
+    min: 180        # ≥ 3 минуты
+    max: 7200       # ≤ 2 часа
+strategy:
+  prep_mode: canonical
+  transport:
+    primary: grpc_async
+    fallback: http_async_per_chunk
+  chunk:
+    seconds: 300
+  audio:
+    encoding: PCM_S16LE
+    sample_rate: 16000
+    channels_count: 1
+  diarization: service_only
+  hints:
+    enable: true
+  dedup:
+    enable: true
+    soft: true
+    overlap: 0.7
+    sim: 0.9
+    max_shift: 2.0
+    same_speaker_only: true
+    contain: 0.9
+  timeouts:
+    no_speech: 2.0
+    eou: 0.6
+    max_speech: 20.0

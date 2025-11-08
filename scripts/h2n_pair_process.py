@@ -29,14 +29,9 @@ def find_norm_for(stem: str) -> Path | None:
 
 def run_ssr(inp: Path, out_md: Path) -> None:
     out_md.parent.mkdir(parents=True, exist_ok=True)
-    # Prefer canonical non-chunked gRPC, fallback to HTTP
-    cmd_grpc = [SALUTE_BIN, "--prep-mode", "canonical", "--api", "grpc", "--input", str(inp), "--output", str(out_md), "--language", "ru-RU"]
-    try:
-        subprocess.check_call(cmd_grpc, cwd=str(ROOT))
-        return
-    except subprocess.CalledProcessError:
-        cmd_http = [SALUTE_BIN, "--prep-mode", "canonical", "--api", "http", "--input", str(inp), "--output", str(out_md), "--language", "ru-RU"]
-        subprocess.check_call(cmd_http, cwd=str(ROOT))
+    # Use smart selector (will pick chunked/fallback strategy per KB case)
+    cmd = [SALUTE_BIN, "--smart", "--input", str(inp), "--output", str(out_md), "--language", "ru-RU"]
+    subprocess.check_call(cmd, cwd=str(ROOT))
 
 
 def main():
