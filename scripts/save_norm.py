@@ -10,16 +10,37 @@ from salute_speech_recognizer.http_async import http_recognize_to_objects
 import json
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: save_norm.py <input_audio> <out_norm_json> [language]", file=sys.stderr)
-        sys.exit(2)
-    inp = Path(sys.argv[1])
-    out = Path(sys.argv[2])
-    lang = sys.argv[3] if len(sys.argv) > 3 else "ru-RU"
+    api_override = None
+    use_flags = len(sys.argv) >= 2 and sys.argv[1].startswith("--")
+    if use_flags:
+        import argparse
+        p = argparse.ArgumentParser(prog="save_norm.py")
+        p.add_argument("--input", required=True)
+        p.add_argument("--output", required=True)
+        p.add_argument("--language", default="ru-RU")
+        p.add_argument("--api", choices=["http", "grpc"], default=None)
+        p.add_argument("--smart", action="store_true")
+        p.add_argument("--verbose", action="store_true")
+        args = p.parse_args()
+        inp = Path(args.input)
+        out = Path(args.output)
+        lang = args.language
+        api_override = args.api
+    else:
+        if len(sys.argv) < 3:
+            print("Usage: save_norm.py <input_audio> <out_norm_json> [language]", file=sys.stderr)
+            sys.exit(2)
+        inp = Path(sys.argv[1])
+        out = Path(sys.argv[2])
+        lang = sys.argv[3] if len(sys.argv) > 3 else "ru-RU"
 
     plan, _ = match_and_plan(str(inp))
     pa = prepare(str(inp), mode=str(plan.get('prep_mode') or 'canonical'), allow_vendor_fallback=True)
     primary = (plan.get('transport') or {}).get('primary', 'grpc_async')
+    if api_override == 'http':
+        primary = 'http_async'
+    elif api_override == 'grpc':
+        primary = 'grpc_async'
 
     if 'grpc' in primary:
         raw, norm, md = grpc_recognize_to_objects(pa.normalized_path, language=lang, diarization=True)

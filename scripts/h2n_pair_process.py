@@ -31,7 +31,19 @@ def run_ssr(inp: Path, out_md: Path) -> None:
     out_md.parent.mkdir(parents=True, exist_ok=True)
     # Use smart selector (will pick chunked/fallback strategy per KB case)
     cmd = [SALUTE_BIN, "--smart", "--input", str(inp), "--output", str(out_md), "--language", "ru-RU"]
-    subprocess.check_call(cmd, cwd=str(ROOT))
+    # retry with exponential backoff to survive transient network/service issues
+    delays = [30, 60, 120, 240, 300]
+    last_err = None
+    for i, d in enumerate([0, *delays]):
+        try:
+            if d:
+                time.sleep(d)
+            subprocess.check_call(cmd, cwd=str(ROOT))
+            return
+        except subprocess.CalledProcessError as e:
+            last_err = e
+            continue
+    raise last_err if last_err else RuntimeError("unknown ssr failure")
 
 
 def main():

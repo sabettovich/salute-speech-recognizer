@@ -79,11 +79,15 @@ def _match_case(meta: dict, c: Case) -> Tuple[bool, int, List[str]]:
             reasons.append(f"ch={ch}")
         else:
             return False, 0, []
-    # duration range
+    # duration range (support both 'duration_sec' and legacy 'duration')
     dur = meta.get("duration")
-    dur_cfg = (m.get("duration_sec") or {}) if isinstance(m.get("duration_sec"), dict) else {}
-    dmin = dur_cfg.get("min")
-    dmax = dur_cfg.get("max")
+    dur_cfg = {}
+    if isinstance(m.get("duration_sec"), dict):
+        dur_cfg = m.get("duration_sec") or {}
+    elif isinstance(m.get("duration"), dict):
+        dur_cfg = m.get("duration") or {}
+    dmin = dur_cfg.get('min')
+    dmax = dur_cfg.get('max')
     if dmin is not None and (dur is None or float(dur) < float(dmin)):
         return False, 0, []
     if dmax is not None and (dur is None or float(dur) > float(dmax)):
