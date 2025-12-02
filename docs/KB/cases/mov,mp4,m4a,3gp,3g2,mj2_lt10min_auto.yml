@@ -1,0 +1,39 @@
+id: mov,mp4,m4a,3gp,3g2,mj2_lt10min_auto
+version: 1
+priority: 0
+match:
+  codec:
+  - aac
+  sample_rate:
+  - 48000
+  channels:
+  - 1
+  duration:
+    min: 300.010667
+    max: 540.010667
+strategy:
+  prep_mode: canonical
+  transport:
+    primary: grpc_async
+    fallback: http_async_per_chunk
+  chunk:
+    seconds: 300
+  audio:
+    encoding: PCM_S16LE
+    sample_rate: 16000
+    channels_count: 1
+  diarization: service_only
+  hints:
+    enable: true
+  dedup:
+    enable: true
+    overlap: 0.6
+    sim: 0.85
+explain:
+  rationale:
+  - auto-generated from successful run
+  expected_outcome:
+    quality: readable_markdown
+notes:
+  owner: auto
+  source: auto-log

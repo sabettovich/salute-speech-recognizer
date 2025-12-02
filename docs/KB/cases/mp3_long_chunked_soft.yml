@@ -1,15 +1,15 @@
-id: zoom_h2n_dual_chunked_soft
+id: mp3_long_chunked_soft
 version: 1
-priority: 80
+priority: 60
 scoring:
-  priority: 80
+  priority: 60
 match:
-  codec: [pcm_s16le, pcm_s24le]
-  sample_rate: [48000]
+  codec: [mp3]
+  sample_rate: [44100]
   channels: [2]
   duration_sec:
-    min: 180        # ≥ 3 минуты
-    max: 7200       # ≤ 2 часа
+    min: 180         # ≥ 3 минуты
+    max: 14400       # ≤ 4 часа
 strategy:
   prep_mode: canonical
   transport:

@@ -1,3 +1,8 @@
 wav_10to20min_auto: 1
-aac_10to20min_auto: 2
-wav_lt10min_auto: 2
+aac_10to20min_auto: 3
+wav_lt10min_auto: 4
+zoom_h2n_dual_soft: 1
+mov,mp4,m4a,3gp,3g2,mj2_lt10min_auto: 2
+zoom_h2n_dual_chunked_soft: 4
+mp3_long_chunked_soft: 4
+aac_ge20min_auto: 1
